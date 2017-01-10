@@ -1,9 +1,15 @@
+import sys, getopt, json, os
+
+# sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "synology"))
+#
+# print (sys.path)
+
 import pandas as pd
 import numpy as np
 import requests as r
 import getpass as gp
 import datetime as dt
-import sys, getopt, json, os
+import synology as syn
 
 shortopts = "hi:o:";
 longopts = ["help", "input=", "output="];
@@ -37,75 +43,36 @@ def main(argv, shortopts, longopts):
     if (output_ext not in ('.csv', '.xls', '.xlsx')):
         sys.exit('Invalid outputfile')
 
-    if (input_ext != '.csv'):
-        sys.exit('Invalid inputpath')
+    # if (input_ext != '.csv'):
+    #     sys.exit('Invalid inputpath')
 
-    output = lookupDirectory(inputpath, outputfile)
-    # 
-    # with open('stats.csv', 'a+') as f:
-    #     statDF = pd.DataFrame([stats], columns = statsCol)
-    #     statDF.to_csv(f)
+    output = lookupDirectory(inputpath, outputname, output_ext)
 
     sys.exit(1)
 
-def synoLogin():
-    try:
-        print('Backup Database Login')
-        usr = input('Enter Username: ')
-        # usr = "MitchellM"
-        pwd = gp.getpass(prompt='Enter Password: ')
-    except UserWarning as warn:
-        print(warn)
-
-    try:
-        payloadAuth = {"api":"SYNO.API.Auth", "version":"3", "method":"login", "account":str(usr), "passwd":str(pwd), "session":"FileStation", "format":"cookie"}
-        auth = r.get('http://128.218.210.52:5000/webapi/auth.cgi', params=payloadAuth)
-        auth.raise_for_status()
-        sid = auth.json()['data']['sid']
-    except (KeyError, r.exceptions.HTTPError) as err:
-        print('Login Failed')
-        retry = input('Try again? (Y/N): ')
-        if retry in ('Y', 'y', 'yes'):
-            return synoLogin()
-        else:
-            sys.exit(2)
-    return sid
-
 def lookupDirectory (inputpath, outputname, output_ext):
-    sid = synoLogin()
+    sid = syn.auth.login()
 
     outputFrame = pd.DataFrame()
 
-        filepath = "/NSDL_Backup/UCSF_BinFiles_V2/"+inputpath
+    filepath = "/NSDL_Backup/UCSF_BinFiles_V2/"+inputpath
 
-        try:
-            //limit to 1000 files for sanity
+    json = syn.fileStation.getList(filepath, sid)
 
-            fileParam = {"api":"SYNO.FileStation.List", "version":"2", "method":"list", "path":str(filepath), "limit":1000, "sort_by": "name", "sort_direction": "desc", "_sid":str(sid), }
+    data = json.get("data")
 
-            response = r.get('http://128.218.210.52:5000/webapi/entry.cgi', params=fileParam)
+    print(data)
 
-            response.raise_for_status()
+    jsonDF = pd.DataFrame(data.get("files"))
+    print(jsonDF)
 
-            json = response.json()
+    writeToFile(jsonDF['name'], outputname+"_names"+output_ext)
 
-            jsonDF = pd.read_json(json.get(files))
-        print(jsonDF)
+    return jsonDF['name']
 
-        except (ValueError, r.exceptions.HTTPError) as err:
-            print(err)
-            print(csv)
-            print (filepath + " was invalid.")
+def writeToFile(entry, path):
+    with open(path, 'a+') as f:
+        entry.to_csv(f)
 
-    # hasAFib = pd.DataFrame([], columns=['hasAFib'])
-    # signalQuality = pd.DataFrame([], columns=['signalQuality'])
-    #
-    # outputFrameBefore = pd.concat([outputFrameBefore, hasAFib, signalQuality], axis = 1)
-    #
-    # outputFrameAfter = pd.concat([outputFrameAfter, hasAFib, signalQuality], axis = 1)
-    #
-    # outputFrameDuring = pd.concat([outputFrameDuring, hasAFib, signalQuality], axis = 1)
-    #
-    # writeToFile(outputFrameBefore, outputname+'_before'+output_ext)
-    # # writeToFile(outputFrameAfter, outputname+'_during'+output_ext)
-    # writeToFile(outputFrameDuring, outputname+'_during'+output_ext)
+if __name__ == "__main__":
+    main(sys.argv[1:], shortopts, longopts)
